@@ -314,62 +314,61 @@
 
   // --- Render ---
   function renderAll(){
-    document.getElementById('deckCount').innerText = state.deck.length;
-    document.getElementById('discardCount').innerText = state.discard.length;
-    document.getElementById('oppDeckCount').innerText = state.deck.length; // shared for demo
-    document.getElementById('handCount').innerText = state.player.hand.length;
-    document.getElementById('playerLife').innerText = state.player.life;
-    document.getElementById('oppLife').innerText = state.opp.life;
-    document.getElementById('turnIndicator').innerText = (state.turn==='player'?'Your Turn':'Opponent');
+  document.getElementById('deckCount').innerText = state.deck.length;
+  document.getElementById('discardCount').innerText = state.discard.length;
+  document.getElementById('oppDeckCount').innerText = state.deck.length; // shared for demo
+  document.getElementById('handCount').innerText = (state.turn === 'player' ? state.player.hand.length : state.opp.hand.length);
+  document.getElementById('playerLife').innerText = state.player.life;
+  document.getElementById('oppLife').innerText = state.opp.life;
+  document.getElementById('turnIndicator').innerText = (state.turn === 'player' ? 'Your Turn' : 'Opponent\'s Turn');
 
-    // hand
-    const handEl = document.getElementById('hand'); handEl.innerHTML='';
-    state.player.hand.forEach((c,i)=>{
-      const div = document.createElement('div'); div.className='card';
-      div.innerHTML = `<div><div class=title>${c.id}</div><div class=card-type>${c.type}</div></div><div class=flavor>${c.text||''}</div><div class=mini>Play</div>`;
-      div.onclick = ()=>{ if(state.turn!=='player') return; playCard(state.player, state.opp, i); };
-      handEl.appendChild(div);
-    });
+  const handEl = document.getElementById('hand');
+  handEl.innerHTML = '';
 
-    // simple opponent hand size show
-    const oppZone = document.getElementById('opponentZone');
-    // battlefield updated already
-  }
+  // Show current player's hand
+  let currentHand = state.turn === 'player' ? state.player.hand : state.opp.hand;
 
-  // --- Turn management & AI ---
-  document.getElementById('endTurnBtn').addEventListener('click', ()=>{ if(state.turn==='player'){ endTurn(); } });
-  document.getElementById('aiToggle').addEventListener('click', ()=>{ state.ai=!state.ai; document.getElementById('aiToggle').innerText = state.ai? 'Opponent: AI ON':'Opponent: AI OFF'; log('AI toggled: '+(state.ai?'ON':'OFF')); });
-  document.getElementById('newGame').addEventListener('click', newGame);
-  document.getElementById('resetBtn').addEventListener('click', ()=>{ location.reload(); });
-  document.getElementById('copyJson').addEventListener('click', ()=>{ navigator.clipboard.writeText(document.getElementById('deckJson').value); log('Deck JSON copied to clipboard.'); });
+  currentHand.forEach((c, i) => {
+    const div = document.createElement('div');
+    div.className = 'card';
+    div.innerHTML = `<div><div class=title>${c.id}</div><div class=card-type>${c.type}</div></div><div class=flavor>${c.text || ''}</div><div class=mini>Play</div>`;
 
-  function endTurn(){
-    // end player, let opponent draw and act
+    // Enable clicking cards only if it's this player's turn
+    if ((state.turn === 'player') || (state.turn === 'opponent' && !state.ai)) {
+      div.onclick = () => {
+        if (state.turn === 'player') {
+          playCard(state.player, state.opp, i);
+        } else if (state.turn === 'opponent' && !state.ai) {
+          playCard(state.opp, state.player, i);
+        }
+      };
+    } else {
+      div.classList.add('disabled');
+    }
+    handEl.appendChild(div);
+  });
+}
+
+function endTurn() {
+  if (state.turn === 'player') {
     draw(state.opp);
-    state.turn='opponent'; state.turnNumber++;
+    state.turn = 'opponent';
+    state.turnNumber++;
     renderAll();
     log('You ended your turn. Opponent drawing.');
-    setTimeout(()=>{ if(state.ai){ aiPlay(); } else { /* hotseat: wait for opponent */ } }, 600);
-  }
 
-  function aiPlay(){
-    // very basic AI: play first playable card then draw then end
-    const hand = state.opp.hand;
-    if(hand.length===0) { draw(state.opp); state.turn='player'; renderAll(); log('Opponent passed.'); return; }
-    // choose best attack if player low
-    let idx=-1;
-    for(let i=0;i<hand.length;i++){ if(hand[i].type==='Attack') { idx=i; break; } }
-    if(idx<0) idx = Math.floor(Math.random()*hand.length);
-    playCard(state.opp, state.player, idx);
-    // AI may play 0-1 additional cards
-    if(Math.random()<0.4 && state.opp.hand.length>0){ setTimeout(()=>{ aiPlay(); }, 500); }
-    else { setTimeout(()=>{ state.turn='player'; draw(state.player); renderAll(); log('Your turn.'); }, 700); }
+    if (state.ai) {
+      setTimeout(aiPlay, 600);
+    }
+    // If AI is off, just wait for opponent player input (no timeout)
+  } else if (state.turn === 'opponent') {
+    draw(state.player);
+    state.turn = 'player';
+    state.turnNumber++;
+    renderAll();
+    log('Opponent ended their turn. Your turn.');
   }
-
-  // --- Init UI & load deck JSON ---
-  exportDeckToTextarea(DEFAULT_DECK);
-  document.getElementById('aiToggle').innerText = state.ai? 'Opponent: AI ON' : 'Opponent: AI OFF';
-  newGame();
+}
 
   // Keep history of last 5 battle log entries
 const battleHistory = [];
