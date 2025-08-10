@@ -3,24 +3,13 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Arcane Blitz — Toggleable Online Play</title>
+  <title>Arcane Blitz — Fast Card Duel</title>
   <style>
     :root{--bg:#0f1724;--card:#0b1220;--accent:#7c3aed;--muted:#94a3b8;--panel:#081023}
     html,body{height:100%;margin:0;font-family:Inter,system-ui,Segoe UI,Roboto,Arial;background:linear-gradient(180deg,#071025,#0b1228);color:#e6eef8}
     .app{max-width:1100px;margin:22px auto;padding:18px;border-radius:12px}
-    header{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
-    h1{font-size:20px;margin:0;flex:1}
-    #toggleOnlineBtn {
-      background: var(--accent);
-      border: none;
-      padding: 8px 16px;
-      border-radius: 8px;
-      color: white;
-      font-weight: 700;
-      cursor: pointer;
-      user-select: none;
-      white-space: nowrap;
-    }
+    header{display:flex;align-items:center;gap:12px}
+    h1{font-size:20px;margin:0}
     .board{display:grid;grid-template-columns:1fr 340px;gap:18px;margin-top:14px}
     .play-area{background:var(--panel);padding:12px;border-radius:10px;min-height:520px}
     .sidebar{background:rgba(10,12,18,0.6);padding:12px;border-radius:10px}
@@ -59,8 +48,8 @@
 <body>
   <div class="app">
     <header>
-      <h1>Arcane Blitz — Online Card Duel</h1>
-      <button id="toggleOnlineBtn">Online Play: OFF</button>
+      <h1>Arcane Blitz — Fast Card Duel (5–10 min)</h1>
+      <div class="muted">Custom cards • Quick rounds • Hotseat or AI</div>
     </header>
 
     <div class="board">
@@ -69,7 +58,7 @@
           <div class="info">
             <div>
               <div class="small">Opponent</div>
-              <div class="life" id="oppLife">--</div>
+              <div class="life" id="oppLife">20</div>
             </div>
             <div>
               <div class="mini">Deck</div>
@@ -77,7 +66,7 @@
             </div>
             <div>
               <div class="mini">Energy</div>
-              <div id="oppEnergy" class="mini">--</div>
+              <div id="oppEnergy" class="mini">3</div>
             </div>
           </div>
         </div>
@@ -102,15 +91,15 @@
           <div class="zone" id="controls">
             <div class="row">
               <div class="muted">Turn:</div>
-              <div id="turnIndicator" class="big">--</div>
+              <div id="turnIndicator" class="big">Player 1</div>
               <div style="flex:1"></div>
-              <button id="endTurnBtn" class="disabled">End Turn</button>
+              <button id="endTurnBtn">End Turn</button>
             </div>
             <div style="margin-top:10px" class="row">
               <div class="muted">Timer:</div>
               <div id="turnTimer" class="big">--</div>
               <div style="flex:1"></div>
-              <button id="newGame" class="secondary disabled">New Game (Online Auto)</button>
+              <button id="aiToggle" class="secondary">Toggle Opponent AI</button>
             </div>
           </div>
         </div>
@@ -119,7 +108,7 @@
           <div class="info">
             <div>
               <div class="small">You</div>
-              <div class="life" id="playerLife">--</div>
+              <div class="life" id="playerLife">20</div>
             </div>
             <div>
               <div class="mini">Hand</div>
@@ -127,7 +116,7 @@
             </div>
             <div>
               <div class="mini">Energy</div>
-              <div id="playerEnergy" class="mini">--</div>
+              <div id="playerEnergy" class="mini">3</div>
             </div>
           </div>
 
@@ -156,57 +145,220 @@
           <div id="log" class="log"></div>
         </div>
 
+        <div class="zone controls">
+          <div class="small">Setup & Controls</div>
+          <div class="row"><button id="newGame">New Game</button><button id="resetBtn" class="secondary">Reset</button></div>
+          <div class="row"><button id="copyJson" class="secondary">Export Deck JSON</button></div>
+        </div>
+
+        <div class="zone">
+          <div class="small">Deck JSON (editable in code)</div>
+          <textarea id="deckJson" style="width:100%;height:120px;background:#021018;color:#b9d9ff;padding:8px;border-radius:6px;border:none;resize:vertical;font-family:monospace;font-size:12px"></textarea>
+        </div>
+
         <footer>
-          Tip: rounds are quick — typical game finishes under 5 minutes. Click cards to play them on your turn.
+          Tip: rounds are quick — typical game finishes under 10 minutes. Click cards to play them on your turn.
         </footer>
       </aside>
     </div>
   </div>
 
-<script>
+  <script>
+  // --- CARD DEFINITIONS (JSON) ---
   const DEFAULT_DECK = [
     {"id":"Strike","type":"Attack","power":3,"text":"Deal 3 damage.","energyCost":1},
     {"id":"Quick Strike","type":"Attack","power":2,"text":"Deal 2 damage. (Fast)","energyCost":1},
     {"id":"Guard","type":"Block","text":"Negate next 3 damage.","block":3,"energyCost":1},
     {"id":"Shield Bash","type":"Attack","power":2,"text":"Deal 2 damage and apply 2 block to yourself.","selfBlock":2,"energyCost":2},
     {"id":"Heal","type":"Heal","power":3,"text":"Restore 3 life.","energyCost":1},
-    {"id":"Adrenaline","type":"Utility","text":"Draw 2 cards, then discard 1.","draw":2,"discard":1,"energyCost":0},
+    {"id":"Adrenaline","type":"Utility","text":"Draw 2 cards, then discard 1.","draw":2,"discard":1,"energyCost":2},
     {"id":"Overload","type":"Attack","power":5,"text":"Deal 5 damage. Lose 2 life.","selfDamage":2,"energyCost":3},
     {"id":"Riposte","type":"Utility","text":"Next attack you receive will be returned for half damage.","riposte":true,"energyCost":1},
-    {"id":"Siphon","type":"Attack","power":2,"text":"Deal 2 damage and heal for 2.","healOnDamage":2,"energyCost":2},
-    {"id":"Insight","type":"Utility","text":"Look at top 3 cards and pick 1 to add to hand.","scry":3,"energyCost":1},
+    {"id":"Siphon","type":"Attack","power":2,"text":"Deal 2 damage and heal for 2.","healOnDamage":2,"energyCost":1},
+    {"id":"Insight","type":"Utility","text":"Look at top 3 cards and pick 1 to add to hand.","scry":3,"energyCost":2},
   ];
 
+  // --- Game engine state ---
   let state = {
     deck:[], discard:[],
     player:{life:20,hand:[],block:0,riposte:false, energy:3, maxEnergy:3},
     opp:{life:20,hand:[],block:0,riposte:false, energy:3, maxEnergy:3},
-    turn:'player', turnNumber:1, timer:60
-  };
+    turn:'player', turnNumber:1, ai:true, timer:60
+  }
 
-  let playerId = null;
-  let roomId = null;
-  let socket = null;
-  let onlinePlay = false;
-
-  const toggleBtn = document.getElementById('toggleOnlineBtn');
-  const endTurnBtn = document.getElementById('endTurnBtn');
-  const newGameBtn = document.getElementById('newGame');
-
+  // --- Utility functions ---
   function log(text){
     const el = document.getElementById('log');
     el.innerHTML = (new Date()).toLocaleTimeString() + ' — ' + text + '\n' + el.innerHTML;
   }
 
   function shuffle(arr){
-    for(let i=arr.length-1;i>0;i--){
-      let j=Math.floor(Math.random()*(i+1));
-      [arr[i],arr[j]]=[arr[j],arr[i]];
+    for(let i=arr.length-1;i>0;i--){let j=Math.floor(Math.random()*(i+1));[arr[i],arr[j]]=[arr[j],arr[i]]}
+  }
+
+  function cloneCard(card){return JSON.parse(JSON.stringify(card))}
+
+  // --- Deck load / export ---
+  function loadDeckFromTextarea(){
+    try{
+      const raw = document.getElementById('deckJson').value.trim();
+      if(!raw) throw new Error('Empty');
+      const parsed = JSON.parse(raw);
+      if(!Array.isArray(parsed)) throw new Error('Deck must be JSON array');
+      return parsed.map(cloneCard);
+    }catch(e){
+      log('Invalid deck JSON — loading default deck.');
+      return DEFAULT_DECK.map(cloneCard);
     }
   }
 
-  function cloneCard(card){return JSON.parse(JSON.stringify(card));}
+  function exportDeckToTextarea(deck){
+    document.getElementById('deckJson').value = JSON.stringify(deck,null,2);
+  }
 
+  // --- Game flow ---
+  function newGame(){
+    state.deck = loadDeckFromTextarea();
+    // make a larger deck by duplicating (for demo quick games)
+    state.deck = [].concat(...Array(6).fill(state.deck)).map((c,i)=>({...cloneCard(c),_uid:i+'-'+c.id}));
+    shuffle(state.deck);
+    state.discard=[];
+    state.player = {life:20,hand:[],block:0,riposte:false, energy:3, maxEnergy:3};
+    state.opp = {life:20,hand:[],block:0,riposte:false, energy:3, maxEnergy:3};
+    state.turn='player'; state.turnNumber=1; state.timer=60;
+    // initial hands
+    for(let i=0;i<4;i++){ draw(state.player); draw(state.opp); }
+    enableOpponentHand(false);
+    renderAll();
+    log('New game started.');
+  }
+
+  function draw(who){
+    if(state.deck.length===0){
+      if(state.discard.length===0) return null;
+      state.deck = state.discard.splice(0);
+      shuffle(state.deck);
+      log('Shuffled discard into deck.');
+    }
+    const card = state.deck.pop();
+    who.hand.push(card);
+    return card;
+  }
+
+  function playCard(playerOB, targetOB, cardIndex){
+    const card = playerOB.hand[cardIndex];
+    const cost = card.energyCost || 1;
+    if(playerOB.energy < cost){
+      log((playerOB === state.player ? 'You' : 'Opponent') + ' do not have enough energy to play ' + card.id + '.');
+      return;
+    }
+    playerOB.energy -= cost;
+    playerOB.hand.splice(cardIndex,1);
+    state.discard.push(card);
+    resolveCard(card, playerOB, targetOB);
+    renderAll();
+    checkWin();
+  }
+
+  function resolveCard(card, me, them){
+    appendBattle(card.id + ' played.');
+    log((me===state.player? 'You':'Opponent') + ' played ' + card.id + '.');
+    // Attack
+    if(card.power){
+      let dmg = card.power;
+      // target block reduces
+      let effective = Math.max(0, dmg - them.block);
+      if(them.block>0){ appendBattle(them===state.player? 'You block '+Math.min(dmg,them.block)+' damage.' : 'Opponent blocks '+Math.min(dmg,them.block)+' damage.'); }
+      them.block = Math.max(0, them.block - dmg);
+
+      // riposte
+      if(them.riposte && effective>0){
+        const ret = Math.floor(effective/2);
+        appendBattle((them===state.player? 'You':'Opponent')+' riposte! Returning '+ret+' damage.');
+        me.life -= ret;
+        them.riposte = false;
+      }
+
+      them.life -= effective;
+      if(card.healOnDamage) me.life += card.healOnDamage;
+    }
+
+    // Block
+    if(card.block){ me.block += card.block; }
+
+    // Self block
+    if(card.selfBlock){ me.block += card.selfBlock; }
+
+    // Self damage
+    if(card.selfDamage){ me.life -= card.selfDamage; }
+
+    // Heal
+    if(card.type==='Heal' || (card.power && card.type==='Heal')){
+      if(card.power) me.life += card.power;
+    }
+
+    // Draw / discard
+    if(card.draw){ for(let i=0;i<card.draw;i++) draw(me); }
+    if(card.discard){
+      for(let i=0;i<card.discard;i++){
+        if(me.hand.length>0){
+          const idx=Math.floor(Math.random()*me.hand.length);
+          const c = me.hand.splice(idx,1)[0];
+          state.discard.push(c);
+          appendBattle((me===state.player? 'You':'Opponent')+' discarded '+c.id+'.');
+        }
+      }
+    }
+
+    // Scry / Insight
+    if(card.scry){
+      const top = [];
+      for(let i=0;i<Math.min(card.scry,state.deck.length);i++) top.push(state.deck[state.deck.length-1-i]);
+      if(top.length>0){
+        const picked = top[0];
+        const idx = state.deck.lastIndexOf(picked);
+        if(idx>=0) state.deck.splice(idx,1);
+        me.hand.push(picked);
+        appendBattle((me===state.player? 'You':'Opponent')+' looked at top '+card.scry+' and took '+picked.id+'.');
+      }
+    }
+
+    // Riposte
+    if(card.riposte){ me.riposte = true; }
+
+    // Clamp life
+    me.life = Math.min(50, me.life);
+    them.life = Math.min(50, them.life);
+  }
+
+  function appendBattle(text){
+    const el = document.getElementById('battleLog');
+    const timestamped = (new Date()).toLocaleTimeString() + ' — ' + text;
+
+    battleHistory.unshift(timestamped);
+
+    if(battleHistory.length > 5){
+      battleHistory.pop();
+    }
+
+    el.innerHTML = battleHistory.join('<br>');
+  }
+
+  function checkWin(){
+    if(state.player.life<=0 || state.opp.life<=0){
+      const winner = state.player.life>0? 'You win!' : (state.opp.life>0? 'Opponent wins!' : 'Draw');
+      log('Game over: ' + winner);
+      disablePlay();
+    }
+  }
+
+  function disablePlay(){
+    document.getElementById('hand').classList.add('disabled');
+    document.getElementById('endTurnBtn').classList.add('disabled');
+    enableOpponentHand(false);
+  }
+
+  // --- Render functions ---
   function renderAll(){
     document.getElementById('playerLife').innerText = state.player.life;
     document.getElementById('oppLife').innerText = state.opp.life;
@@ -215,15 +367,9 @@
     document.getElementById('oppDeckCount').innerText = state.deck.length;
     document.getElementById('playerEnergy').innerText = state.player.energy;
     document.getElementById('oppEnergy').innerText = state.opp.energy;
-    document.getElementById('turnIndicator').innerText = state.turn==='player'? 'Your Turn' : 'Opponent Turn';
 
-    if(state.turn==='player'){
-      endTurnBtn.classList.remove('disabled');
-      endTurnBtn.onclick = endTurn;
-    } else {
-      endTurnBtn.classList.add('disabled');
-      endTurnBtn.onclick = null;
-    }
+    // Turn indicator
+    document.getElementById('turnIndicator').innerText = state.turn==='player'? 'Your Turn' : 'Opponent Turn';
 
     // Render player hand
     const handDiv = document.getElementById('hand');
@@ -243,297 +389,141 @@
       handDiv.appendChild(cardDiv);
     });
 
-    // Update newGame button state based on onlinePlay
-    if(onlinePlay){
-      newGameBtn.classList.remove('disabled');
-      newGameBtn.onclick = () => {
-        if(socket && socket.readyState === WebSocket.OPEN){
-          socket.send(JSON.stringify({type:'join'}));
-        }
-      };
+    // Opponent hand - only render clickable if hotseat and opponent's turn
+    if(!state.ai && state.turn==='opponent'){
+      enableOpponentHand(true);
     } else {
-      newGameBtn.classList.add('disabled');
-      newGameBtn.onclick = null;
+      enableOpponentHand(false);
     }
   }
 
-  function appendBattle(text){
-    const el = document.getElementById('battleLog');
-    const timestamped = (new Date()).toLocaleTimeString() + ' — ' + text;
-    el.innerHTML = timestamped + '<br>' + el.innerHTML;
-  }
-
-  function drawCard(player){
-    if(state.deck.length === 0){
-      state.deck = state.discard.splice(0);
-      shuffle(state.deck);
-    }
-    if(state.deck.length > 0){
-      const card = state.deck.pop();
-      player.hand.push(card);
-    }
-  }
-
-  function resolveCard(card, player, opponent){
-    appendBattle(`${player === state.player ? 'You' : 'Opponent'} played ${card.id}`);
-
-    if(card.type === 'Attack'){
-      let damage = card.power || 0;
-      if(opponent.block > 0){
-        const blocked = Math.min(opponent.block, damage);
-        damage -= blocked;
-        opponent.block -= blocked;
-        appendBattle(`${opponent === state.player ? 'You' : 'Opponent'} blocked ${blocked} damage.`);
-      }
-
-      if(opponent.riposte && damage > 0){
-        const ret = Math.floor(damage/2);
-        appendBattle(`${opponent === state.player ? 'You' : 'Opponent'} ripostes for ${ret} damage!`);
-        player.life -= ret;
-        opponent.riposte = false;
-      }
-
-      if(damage > 0){
-        opponent.life -= damage;
-        appendBattle(`${opponent === state.player ? 'You' : 'Opponent'} took ${damage} damage.`);
-      }
-
-      if(card.healOnDamage){
-        player.life += card.healOnDamage;
-        appendBattle(`${player === state.player ? 'You' : 'Opponent'} healed for ${card.healOnDamage}.`);
-      }
-
-      if(card.selfDamage){
-        player.life -= card.selfDamage;
-        appendBattle(`${player === state.player ? 'You' : 'Opponent'} takes ${card.selfDamage} self damage.`);
-      }
-
-      if(card.selfBlock){
-        player.block += card.selfBlock;
-        appendBattle(`${player === state.player ? 'You' : 'Opponent'} gains ${card.selfBlock} block.`);
-      }
-    } else if(card.type === 'Block'){
-      player.block += card.block || 0;
-      appendBattle(`${player === state.player ? 'You' : 'Opponent'} gains ${card.block} block.`);
-    } else if(card.type === 'Heal'){
-      player.life += card.power || 0;
-      appendBattle(`${player === state.player ? 'You' : 'Opponent'} heals ${card.power}.`);
-    } else if(card.type === 'Utility'){
-      if(card.riposte) {
-        player.riposte = true;
-        appendBattle(`${player === state.player ? 'You' : 'Opponent'} activates Riposte.`);
-      }
-      if(card.draw){
-        for(let i=0;i<card.draw;i++) drawCard(player);
-        appendBattle(`${player === state.player ? 'You' : 'Opponent'} draws ${card.draw} cards.`);
-      }
-      if(card.discard){
-        for(let i=0;i<card.discard;i++){
-          if(player.hand.length>0){
-            const discarded = player.hand.pop();
-            state.discard.push(discarded);
-            appendBattle(`${player === state.player ? 'You' : 'Opponent'} discards ${discarded.id}.`);
-          }
-        }
-      }
-    }
-
-    player.energy -= card.energyCost || 1;
-  }
-
-  function setupSocket(){
-    socket = new WebSocket('ws://localhost:8080');
-    socket.onopen = () => {
-      log('Connected to server, joining matchmaking...');
-      socket.send(JSON.stringify({type:'join'}));
-    };
-
-    socket.onmessage = (evt) => {
-      const data = JSON.parse(evt.data);
-      if(data.type === 'joined'){
-        playerId = data.playerId;
-        roomId = data.roomId;
-        log(`Joined room ${roomId} as ${playerId}`);
-      }
-      else if(data.type === 'startGame'){
-        log(data.message);
-        resetState();
-        renderAll();
-      }
-      else if(data.type === 'playCard'){
-        const isOpponent = data.playerId !== playerId;
-        const cardIndex = data.cardIndex;
-        const cardId = data.cardId;
-        const playerObj = isOpponent ? state.opp : state.player;
-        const opponentObj = isOpponent ? state.player : state.opp;
-
-        if(playerObj.hand[cardIndex] && playerObj.hand[cardIndex].id === cardId){
-          playerObj.hand.splice(cardIndex, 1);
-          appendBattle(`${isOpponent ? 'Opponent' : 'You'} played ${cardId}`);
-          resolveCard(cloneCard(DEFAULT_DECK.find(c => c.id === cardId)), playerObj, opponentObj);
-          renderAll();
-        }
-      }
-      else if(data.type === 'turnChange'){
-        state.turn = (data.turn === 'player1' && playerId === 'player1') || (data.turn === 'player2' && playerId === 'player2') ? 'player' : 'opponent';
-        log(`Turn changed: ${state.turn==='player'? 'Your Turn' : 'Opponent Turn'}`);
-        if(state.turn === 'player'){
-          state.player.energy = state.player.maxEnergy;
-          drawCard(state.player);
-        }
-        renderAll();
-      }
-      else if(data.type === 'error'){
-        log(`Server error: ${data.message}`);
-      }
-    };
-
-    socket.onerror = (err) => {
-      log('WebSocket error');
-      console.error(err);
-    };
-
-    socket.onclose = () => {
-      log('Disconnected from server.');
-      // If disconnected while onlinePlay enabled, auto toggle OFF to fallback offline
-      if(onlinePlay){
-        toggleOnline(false);
-      }
-    };
-  }
-
-  function disconnectSocket(){
-    if(socket){
-      socket.close();
-      socket = null;
-      playerId = null;
-      roomId = null;
-    }
-  }
-
-  function playCard(playerOB, targetOB, cardIndex){
-    if(state.turn !== 'player'){
-      log('Not your turn!');
-      return;
-    }
-    const card = state.player.hand[cardIndex];
-    if(!card) return;
-    if(card.energyCost > state.player.energy){
-      log('Not enough energy.');
-      return;
-    }
-
-    if(onlinePlay){
-      if(!socket || socket.readyState !== WebSocket.OPEN){
-        log('Not connected to server.');
-        return;
-      }
-      socket.send(JSON.stringify({
-        type:'playCard',
-        cardId: card.id,
-        cardIndex: cardIndex
-      }));
-    } else {
-      // Offline play: resolve immediately
-      state.player.hand.splice(cardIndex, 1);
-      resolveCard(card, state.player, state.opp);
-      renderAll();
-    }
-  }
-
-  function endTurn(){
-    if(state.turn !== 'player'){
-      log('Not your turn!');
-      return;
-    }
-
-    if(onlinePlay){
-      if(!socket || socket.readyState !== WebSocket.OPEN){
-        log('Not connected to server.');
-        return;
-      }
-      socket.send(JSON.stringify({type:'endTurn'}));
-      state.turn = 'opponent';
-      renderAll();
-    } else {
-      // Offline turn swap
-      state.turn = 'opponent';
-      opponentTurn();
-    }
-  }
-
-  function opponentTurn(){
-    // Simple AI for offline mode
-    setTimeout(() => {
-      // Opponent plays first playable card if any
-      for(let i=0; i<state.opp.hand.length; i++){
-        let c = state.opp.hand[i];
-        if(c.energyCost <= state.opp.energy){
-          state.opp.hand.splice(i,1);
-          resolveCard(c, state.opp, state.player);
-          break;
-        }
-      }
-      state.opp.energy = state.opp.maxEnergy;
-      drawCard(state.opp);
-
-      state.turn = 'player';
-      state.player.energy = state.player.maxEnergy;
-      drawCard(state.player);
-      renderAll();
-      log('Your turn.');
-    }, 1200);
-  }
-
-  function resetState(){
-    state.deck = [];
-    state.discard = [];
-    state.player = {life:20,hand:[],block:0,riposte:false, energy:3, maxEnergy:3};
-    state.opp = {life:20,hand:[],block:0,riposte:false, energy:3, maxEnergy:3};
-    state.turn = 'player';
-    state.turnNumber = 1;
-    state.timer = 60;
-
-    for(let i=0;i<10;i++) state.deck.push(cloneCard(DEFAULT_DECK[i%DEFAULT_DECK.length]));
-    shuffle(state.deck);
-    for(let i=0;i<5;i++) drawCard(state.player);
-    for(let i=0;i<5;i++) drawCard(state.opp);
-  }
-
-  function toggleOnline(enabled){
-    onlinePlay = enabled;
-    toggleBtn.innerText = `Online Play: ${enabled ? 'ON' : 'OFF'}`;
-    log(`Online play ${enabled ? 'enabled' : 'disabled'}.`);
+  // Enable or disable opponent hand for hotseat play
+  function enableOpponentHand(enabled){
+    const oppZone = document.getElementById('opponentZone');
+    oppZone.classList.toggle('active', enabled);
 
     if(enabled){
-      resetState();
-      setupSocket();
-      newGameBtn.classList.remove('disabled');
-      newGameBtn.onclick = () => {
-        if(socket && socket.readyState === WebSocket.OPEN){
-          socket.send(JSON.stringify({type:'join'}));
-        }
-      };
-      endTurnBtn.classList.add('disabled'); // disable end turn until connected and game started
-      endTurnBtn.onclick = null;
+      renderOpponentHand();
     } else {
-      disconnectSocket();
-      resetState();
-      newGameBtn.classList.add('disabled');
-      newGameBtn.onclick = null;
-      endTurnBtn.classList.remove('disabled');
-      endTurnBtn.onclick = endTurn;
-      renderAll();
+      clearOpponentHandUI();
     }
   }
 
-  toggleBtn.onclick = () => {
-    toggleOnline(!onlinePlay);
+  // Render opponent hand cards for hotseat mode
+  function renderOpponentHand(){
+    let oppZone = document.getElementById('opponentZone');
+    let existing = document.getElementById('oppHand');
+    if(existing) existing.remove();
+
+    const handDiv = document.createElement('div');
+    handDiv.id = 'oppHand';
+    handDiv.className = 'hand';
+    handDiv.style.marginTop = '8px';
+    handDiv.style.flexWrap = 'wrap';
+    handDiv.style.gap = '8px';
+
+    state.opp.hand.forEach((c,i) => {
+      const cost = c.energyCost || 1;
+      const div = document.createElement('div');
+      div.className = 'card';
+      div.innerHTML = `<div><div class=title>${c.id} (${cost}⚡)</div><div class=card-type>${c.type}</div></div><div class=flavor>${c.text||''}</div><div class=mini>Play</div>`;
+
+      if(state.opp.energy < cost){
+        div.classList.add('disabled');
+        div.title = `Not enough energy (${cost})`;
+      } else {
+        div.onclick = () => {
+          if(state.turn !== 'opponent') return;
+          playCard(state.opp, state.player, i);
+        };
+      }
+      handDiv.appendChild(div);
+    });
+    oppZone.appendChild(handDiv);
+  }
+
+  // Clear opponent hand UI
+  function clearOpponentHandUI(){
+    const oppHand = document.getElementById('oppHand');
+    if(oppHand) oppHand.remove();
+  }
+
+  // --- Turn management ---
+  function endTurn(){
+    if(state.turn==='player'){
+      state.turn = 'opponent';
+      state.turnNumber++;
+      state.opp.energy = state.opp.maxEnergy;
+      draw(state.opp);
+      renderAll();
+      log('You ended your turn. Opponent draws a card.');
+
+      if(state.ai){
+        enableOpponentHand(false);
+        setTimeout(() => aiPlay(), 600);
+      } else {
+        log('Opponent\'s turn. Play cards.');
+        enableOpponentHand(true);
+      }
+    } else if(state.turn==='opponent'){
+      state.turn = 'player';
+      state.turnNumber++;
+      state.player.energy = state.player.maxEnergy;
+      draw(state.player);
+      renderAll();
+      log('Opponent ended turn. Your turn.');
+      enableOpponentHand(false);
+    }
+  }
+
+  // --- AI ---
+  function aiPlay(){
+    if(state.turn !== 'opponent') return;
+    // AI plays all playable cards it can afford
+    let playedCard = false;
+    for(let i=state.opp.hand.length-1;i>=0;i--){
+      const card = state.opp.hand[i];
+      const cost = card.energyCost || 1;
+      if(state.opp.energy >= cost){
+        playCard(state.opp, state.player, i);
+        playedCard = true;
+        break;
+      }
+    }
+    if(!playedCard){
+      log('Opponent AI ends turn.');
+      endTurn();
+    } else {
+      // AI plays cards one at a time with delay
+      setTimeout(aiPlay, 800);
+    }
+  }
+
+  // --- Setup handlers ---
+  document.getElementById('endTurnBtn').onclick = () => endTurn();
+  document.getElementById('newGame').onclick = () => newGame();
+  document.getElementById('resetBtn').onclick = () => {
+    exportDeckToTextarea(DEFAULT_DECK);
+    newGame();
+  };
+  document.getElementById('aiToggle').onclick = () => {
+    state.ai = !state.ai;
+    document.getElementById('aiToggle').innerText = state.ai ? 'Toggle Opponent AI (On)' : 'Toggle Opponent AI (Off)';
+    log('AI toggled ' + (state.ai ? 'On' : 'Off') + '.');
+    enableOpponentHand(false);
+    renderAll();
+  };
+  document.getElementById('copyJson').onclick = () => {
+    navigator.clipboard.writeText(document.getElementById('deckJson').value).then(() => {
+      log('Deck JSON copied to clipboard.');
+    });
   };
 
-  // Init offline mode by default
-  resetState();
-  renderAll();
-</script>
+  // --- Init ---
+  let battleHistory = [];
+  exportDeckToTextarea(DEFAULT_DECK);
+  newGame();
+
+  </script>
 </body>
 </html>
