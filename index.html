@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Arcane Blitz — Fast Card Duel</title>
+  <style>
+    :root{--bg:#0f1724;--card:#0b1220;--accent:#7c3aed;--muted:#94a3b8;--panel:#081023}
+    html,body{height:100%;margin:0;font-family:Inter,system-ui,Segoe UI,Roboto,Arial;background:linear-gradient(180deg,#071025,#0b1228);color:#e6eef8}
+    .app{max-width:1100px;margin:22px auto;padding:18px;border-radius:12px}
+    header{display:flex;align-items:center;gap:12px}
+    h1{font-size:20px;margin:0}
+    .board{display:grid;grid-template-columns:1fr 340px;gap:18px;margin-top:14px}
+    .play-area{background:var(--panel);padding:12px;border-radius:10px;min-height:520px}
+    .sidebar{background:rgba(10,12,18,0.6);padding:12px;border-radius:10px}
+    .zone{border-radius:8px;padding:8px;margin-bottom:10px;background:linear-gradient(180deg,rgba(255,255,255,0.02),transparent)}
+    .row{display:flex;gap:8px;align-items:center}
+    .info{display:flex;justify-content:space-between;align-items:center}
+    .player{padding:10px;border-radius:8px}
+    .life{font-weight:700;font-size:18px}
+    .hand{display:flex;gap:8px;flex-wrap:wrap}
+    .card{width:92px;height:128px;border-radius:8px;background:linear-gradient(180deg,#0b2136,#06202b);box-shadow:0 6px 18px rgba(4,6,12,0.6);padding:8px;display:flex;flex-direction:column;justify-content:space-between;cursor:pointer}
+    .card .title{font-size:12px;font-weight:700}
+    .card .flavor{font-size:11px;color:var(--muted)}
+    .mini{font-size:12px;color:var(--muted)}
+    .deck-slot{width:56px;height:80px;border-radius:6px;background:linear-gradient(180deg,#081423,#03122a);display:flex;align-items:center;justify-content:center;flex-direction:column}
+    .center-board{display:flex;flex-direction:column;gap:10px;align-items:center;margin-top:14px}
+    .log{height:120px;overflow:auto;background:linear-gradient(180deg,rgba(255,255,255,0.02),transparent);padding:8px;border-radius:8px}
+    button{background:var(--accent);border:none;padding:8px 10px;border-radius:8px;color:white;font-weight:700;cursor:pointer}
+    button.secondary{background:transparent;color:var(--muted);border:1px solid rgba(255,255,255,0.04)}
+    .controls{display:flex;flex-direction:column;gap:8px}
+    .big{font-size:18px}
+    .muted{color:var(--muted)}
+    footer{margin-top:12px;color:var(--muted);font-size:13px}
+    .disabled{opacity:0.45;pointer-events:none}
+    .card-type{font-size:11px;padding:4px;border-radius:6px;background:rgba(255,255,255,0.02);display:inline-block}
+    .hand .card.playable{outline:3px solid rgba(124,58,237,0.18)}
+    .health-bar{height:10px;background:rgba(255,255,255,0.05);border-radius:8px;overflow:hidden}
+    .health-fill{height:100%;background:linear-gradient(90deg,#10b981,#047857);width:100%}
+    .small{font-size:13px}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1>Arcane Blitz — Fast Card Duel (5–10 min)</h1>
+      <div class="muted">Custom cards • Quick rounds • Hotseat or AI</div>
+    </header>
+
+    <div class="board">
+      <div class="play-area" id="playArea">
+        <div class="zone player" id="opponentZone">
+          <div class="info">
+            <div>
+              <div class="small">Opponent</div>
+              <div class="life" id="oppLife">20</div>
+            </div>
+            <div>
+              <div class="mini">Deck</div>
+              <div id="oppDeckCount" class="mini">--</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="center-board">
+          <div class="zone" id="battlefield">
+            <div class="small">Battlefield (played cards & effects)</div>
+            <div id="battleLog" style="margin-top:8px;min-height:70px"></div>
+          </div>
+
+          <div class="row">
+            <div class="deck-slot" id="deckSlot">
+              <div class="small">Deck</div>
+              <div id="deckCount">--</div>
+            </div>
+            <div class="deck-slot" id="discardSlot">
+              <div class="small">Discard</div>
+              <div id="discardCount">0</div>
+            </div>
+          </div>
+
+          <div class="zone" id="controls">
+            <div class="row">
+              <div class="muted">Turn:</div>
+              <div id="turnIndicator" class="big">Player 1</div>
+              <div style="flex:1"></div>
+              <button id="endTurnBtn">End Turn</button>
+            </div>
+            <div style="margin-top:10px" class="row">
+              <div class="muted">Timer:</div>
+              <div id="turnTimer" class="big">--</div>
+              <div style="flex:1"></div>
+              <button id="aiToggle" class="secondary">Toggle Opponent AI</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="zone player" id="playerZone" style="margin-top:18px">
+          <div class="info">
+            <div>
+              <div class="small">You</div>
+              <div class="life" id="playerLife">20</div>
+            </div>
+            <div>
+              <div class="mini">Hand</div>
+              <div id="handCount" class="mini">--</div>
+            </div>
+          </div>
+
+          <div style="margin-top:10px">
+            <div class="small">Your Hand</div>
+            <div id="hand" class="hand" style="margin-top:8px"></div>
+          </div>
+        </div>
+
+      </div>
+
+      <aside class="sidebar">
+        <div class="zone">
+          <div class="small">Card Legend</div>
+          <div class="muted small" style="margin-top:6px">Cards are resolved immediately when played. Read the tooltip for effects.</div>
+          <ul style="margin-top:8px;color:var(--muted);font-size:13px">
+            <li><strong>Attack</strong> — Deal direct damage.</li>
+            <li><strong>Block</strong> — Negate next incoming damage.</li>
+            <li><strong>Heal</strong> — Restore life.</li>
+            <li><strong>Utility</strong> — Draw, swap, multi-effect.</li>
+          </ul>
+        </div>
+
+        <div class="zone">
+          <div class="small">Game Log</div>
+          <div id="log" class="log"></div>
+        </div>
+
+        <div class="zone controls">
+          <div class="small">Setup & Controls</div>
+          <div class="row"><button id="newGame">New Game</button><button id="resetBtn" class="secondary">Reset</button></div>
+          <div class="row"><button id="copyJson" class="secondary">Export Deck JSON</button></div>
+        </div>
+
+        <div class="zone">
+          <div class="small">Deck JSON (editable in code)</div>
+          <textarea id="deckJson" style="width:100%;height:120px;background:#021018;color:#b9d9ff;padding:8px;border-radius:6px;border:none;resize:vertical;font-family:monospace;font-size:12px"></textarea>
+        </div>
+
+        <footer>
+          Tip: rounds are quick — typical game finishes under 10 minutes. Click cards to play them on your turn.
+        </footer>
+      </aside>
+    </div>
+  </div>
+
+  <script>
+  // --- CARD DEFINITIONS (JSON) ---
+  const DEFAULT_DECK = [
+    {"id":"Strike","type":"Attack","power":3,"text":"Deal 3 damage."},
+    {"id":"Quick Strike","type":"Attack","power":2,"text":"Deal 2 damage. (Fast)"},
+    {"id":"Guard","type":"Block","text":"Negate next 3 damage." ,"block":3},
+    {"id":"Shield Bash","type":"Attack","power":2,"text":"Deal 2 damage and apply 2 block to yourself.","selfBlock":2},
+    {"id":"Heal","type":"Heal","power":3,"text":"Restore 3 life."},
+    {"id":"Adrenaline","type":"Utility","text":"Draw 2 cards, then discard 1.","draw":2,"discard":1},
+    {"id":"Overload","type":"Attack","power":5,"text":"Deal 5 damage. Lose 2 life.","selfDamage":2},
+    {"id":"Riposte","type":"Utility","text":"Next attack you receive will be returned for half damage.","riposte":true},
+    {"id":"Siphon","type":"Attack","power":2,"text":"Deal 2 damage and heal for 2." ,"healOnDamage":2},
+    {"id":"Insight","type":"Utility","text":"Look at top 3 cards and pick 1 to add to hand.","scry":3},
+  ];
+
+  // --- Game engine state ---
+  let state = {
+    deck:[], discard:[], player:{life:20,hand:[],block:0,riposte:false},
+    opp:{life:20,hand:[],block:0,riposte:false},
+    turn:'player', turnNumber:1, ai:true, timer:60
+  }
+
+  // --- Utility functions ---
+  function log(text){
+    const el = document.getElementById('log');
+    el.innerHTML = (new Date()).toLocaleTimeString() + ' — ' + text + '\n' + el.innerHTML;
+  }
+
+  function shuffle(arr){
+    for(let i=arr.length-1;i>0;i--){let j=Math.floor(Math.random()*(i+1));[arr[i],arr[j]]=[arr[j],arr[i]]}
+  }
+
+  function cloneCard(card){return JSON.parse(JSON.stringify(card))}
+
+  // --- Deck load / export ---
+  function loadDeckFromTextarea(){
+    try{
+      const raw = document.getElementById('deckJson').value.trim();
+      if(!raw) throw new Error('Empty');
+      const parsed = JSON.parse(raw);
+      if(!Array.isArray(parsed)) throw new Error('Deck must be JSON array');
+      return parsed.map(cloneCard);
+    }catch(e){
+      log('Invalid deck JSON — loading default deck.');
+      return DEFAULT_DECK.map(cloneCard);
+    }
+  }
+
+  function exportDeckToTextarea(deck){
+    document.getElementById('deckJson').value = JSON.stringify(deck,null,2);
+  }
+
+  // --- Game flow ---
+  function newGame(){
+    state.deck = loadDeckFromTextarea();
+    // make a larger deck by duplicating (for demo quick games)
+    state.deck = [].concat(...Array(6).fill(state.deck)).map((c,i)=>({...cloneCard(c),_uid:i+'-'+c.id}));
+    shuffle(state.deck);
+    state.discard=[];
+    state.player = {life:20,hand:[],block:0,riposte:false};
+    state.opp = {life:20,hand:[],block:0,riposte:false};
+    state.turn='player'; state.turnNumber=1; state.timer=60;
+    // initial hands
+    for(let i=0;i<4;i++){ draw(state.player); draw(state.opp); }
+    renderAll();
+    log('New game started.');
+  }
+
+  function draw(who){
+    if(state.deck.length===0){
+      if(state.discard.length===0) return null;
+      state.deck = state.discard.splice(0); shuffle(state.deck); log('Shuffled discard into deck.');
+    }
+    const card = state.deck.pop();
+    who.hand.push(card);
+    return card;
+  }
+
+  function playCard(playerOB, targetOB, cardIndex){
+    const card = playerOB.hand.splice(cardIndex,1)[0];
+    state.discard.push(card);
+    resolveCard(card, playerOB, targetOB);
+    renderAll();
+    checkWin();
+  }
+
+  function resolveCard(card, me, them){
+    appendBattle(card.id + ' played.');
+    log((me===state.player? 'You':'Opponent') + ' played ' + card.id + '.');
+    // Attack
+    if(card.power){
+      let dmg = card.power;
+      // target block reduces
+      let effective = Math.max(0, dmg - them.block);
+      if(them.block>0){ appendBattle(them===state.player? 'You block '+Math.min(dmg,them.block)+' damage.' : 'Opponent blocks '+Math.min(dmg,them.block)+' damage.'); }
+      them.block = Math.max(0, them.block - dmg);
+
+      // riposte
+      if(them.riposte && effective>0){
+        const ret = Math.floor(effective/2);
+        appendBattle((them===state.player? 'You':'Opponent')+' riposte! Returning '+ret+' damage.');
+        me.life -= ret;
+        them.riposte = false;
+      }
+
+      them.life -= effective;
+      if(card.healOnDamage) me.life += card.healOnDamage;
+    }
+
+    // Block
+    if(card.block){ me.block += card.block; }
+
+    // Self block
+    if(card.selfBlock){ me.block += card.selfBlock; }
+
+    // Self damage
+    if(card.selfDamage){ me.life -= card.selfDamage; }
+
+    // Heal
+    if(card.type==='Heal' || card.power && card.type==='Heal'){
+      if(card.power) me.life += card.power;
+    }
+
+    // Draw / discard
+    if(card.draw){ for(let i=0;i<card.draw;i++) draw(me); }
+    if(card.discard){ // simple: discard random from hand
+      for(let i=0;i<card.discard;i++){ if(me.hand.length>0){ const idx=Math.floor(Math.random()*me.hand.length); const c = me.hand.splice(idx,1)[0]; state.discard.push(c); appendBattle((me===state.player? 'You':'Opponent')+' discarded '+c.id+'.'); } }
+    }
+
+    // Scry / Insight
+    if(card.scry){ // look at top N, pick highest-power to add
+      const top = [];
+      for(let i=0;i<Math.min(card.scry,state.deck.length);i++) top.push(state.deck[state.deck.length-1-i]);
+      // simple pick first
+      if(top.length>0){ const picked = top[0]; // remove it from deck
+        const idx = state.deck.lastIndexOf(picked); if(idx>=0) state.deck.splice(idx,1);
+        me.hand.push(picked); appendBattle((me===state.player? 'You':'Opponent')+' looked at top '+card.scry+' and took '+picked.id+'.');
+      }
+    }
+
+    // Riposte
+    if(card.riposte){ me.riposte = true; }
+
+    // Clamp life
+    me.life = Math.min(50, me.life);
+    them.life = Math.min(50, them.life);
+  }
+
+  function appendBattle(text){
+    const el = document.getElementById('battleLog');
+    el.innerHTML = (new Date()).toLocaleTimeString() + ' — ' + text + '<br>' + el.innerHTML;
+  }
+
+  function checkWin(){
+    if(state.player.life<=0 || state.opp.life<=0){
+      const winner = state.player.life>0? 'You win!' : (state.opp.life>0? 'Opponent wins!' : 'Draw');
+      log('Game over: ' + winner);
+      disablePlay();
+    }
+  }
+
+  function disablePlay(){ document.getElementById('hand').classList.add('disabled'); document.getElementById('endTurnBtn').classList.add('disabled'); }
+
+  // --- Render ---
+  function renderAll(){
+    document.getElementById('deckCount').innerText = state.deck.length;
+    document.getElementById('discardCount').innerText = state.discard.length;
+    document.getElementById('oppDeckCount').innerText = state.deck.length; // shared for demo
+    document.getElementById('handCount').innerText = state.player.hand.length;
+    document.getElementById('playerLife').innerText = state.player.life;
+    document.getElementById('oppLife').innerText = state.opp.life;
+    document.getElementById('turnIndicator').innerText = (state.turn==='player'?'Your Turn':'Opponent');
+
+    // hand
+    const handEl = document.getElementById('hand'); handEl.innerHTML='';
+    state.player.hand.forEach((c,i)=>{
+      const div = document.createElement('div'); div.className='card';
+      div.innerHTML = `<div><div class=title>${c.id}</div><div class=card-type>${c.type}</div></div><div class=flavor>${c.text||''}</div><div class=mini>Play</div>`;
+      div.onclick = ()=>{ if(state.turn!=='player') return; playCard(state.player, state.opp, i); };
+      handEl.appendChild(div);
+    });
+
+    // simple opponent hand size show
+    const oppZone = document.getElementById('opponentZone');
+    // battlefield updated already
+  }
+
+  // --- Turn management & AI ---
+  document.getElementById('endTurnBtn').addEventListener('click', ()=>{ if(state.turn==='player'){ endTurn(); } });
+  document.getElementById('aiToggle').addEventListener('click', ()=>{ state.ai=!state.ai; document.getElementById('aiToggle').innerText = state.ai? 'Opponent: AI ON':'Opponent: AI OFF'; log('AI toggled: '+(state.ai?'ON':'OFF')); });
+  document.getElementById('newGame').addEventListener('click', newGame);
+  document.getElementById('resetBtn').addEventListener('click', ()=>{ location.reload(); });
+  document.getElementById('copyJson').addEventListener('click', ()=>{ navigator.clipboard.writeText(document.getElementById('deckJson').value); log('Deck JSON copied to clipboard.'); });
+
+  function endTurn(){
+    // end player, let opponent draw and act
+    draw(state.opp);
+    state.turn='opponent'; state.turnNumber++;
+    renderAll();
+    log('You ended your turn. Opponent drawing.');
+    setTimeout(()=>{ if(state.ai){ aiPlay(); } else { /* hotseat: wait for opponent */ } }, 600);
+  }
+
+  function aiPlay(){
+    // very basic AI: play first playable card then draw then end
+    const hand = state.opp.hand;
+    if(hand.length===0) { draw(state.opp); state.turn='player'; renderAll(); log('Opponent passed.'); return; }
+    // choose best attack if player low
+    let idx=-1;
+    for(let i=0;i<hand.length;i++){ if(hand[i].type==='Attack') { idx=i; break; } }
+    if(idx<0) idx = Math.floor(Math.random()*hand.length);
+    playCard(state.opp, state.player, idx);
+    // AI may play 0-1 additional cards
+    if(Math.random()<0.4 && state.opp.hand.length>0){ setTimeout(()=>{ aiPlay(); }, 500); }
+    else { setTimeout(()=>{ state.turn='player'; draw(state.player); renderAll(); log('Your turn.'); }, 700); }
+  }
+
+  // --- Init UI & load deck JSON ---
+  exportDeckToTextarea(DEFAULT_DECK);
+  document.getElementById('aiToggle').innerText = state.ai? 'Opponent: AI ON' : 'Opponent: AI OFF';
+  newGame();
+  </script>
+</body>
+</html>
