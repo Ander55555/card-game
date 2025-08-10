@@ -43,8 +43,7 @@
 <body>
   <div class="app">
     <header>
-      <h1>Arcane Blitz — Fast Card Duel (5–10 min)</h1>
-      <div class="muted">Custom cards • Quick rounds • Hotseat or AI</div>
+      <h1>Arcane Blitz — Fast Card Duel</h1>
     </header>
 
     <div class="board">
@@ -371,6 +370,25 @@
   exportDeckToTextarea(DEFAULT_DECK);
   document.getElementById('aiToggle').innerText = state.ai? 'Opponent: AI ON' : 'Opponent: AI OFF';
   newGame();
+
+  // Keep history of last 5 battle log entries
+const battleHistory = [];
+
+function appendBattle(text){
+  const el = document.getElementById('battleLog');
+  const timestamped = (new Date()).toLocaleTimeString() + ' — ' + text;
+
+  // Add new entry to front
+  battleHistory.unshift(timestamped);
+
+  // Keep only 5 most recent entries
+  if(battleHistory.length > 5){
+    battleHistory.pop();
+  }
+
+  // Update HTML to show only last 5 entries
+  el.innerHTML = battleHistory.join('<br>');
+}
   </script>
 </body>
 </html>
