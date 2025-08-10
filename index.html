@@ -48,8 +48,7 @@
 <body>
   <div class="app">
     <header>
-      <h1>Arcane Blitz — Fast Card Duel (5–10 min)</h1>
-      <div class="muted">Custom cards • Quick rounds • Hotseat or AI</div>
+      <h1>Arcane Blitz — Fast Card Duel</h1>
     </header>
 
     <div class="board">
@@ -157,7 +156,7 @@
         </div>
 
         <footer>
-          Tip: rounds are quick — typical game finishes under 10 minutes. Click cards to play them on your turn.
+          Tip: rounds are quick — typical game finishes under 5 minutes. Click cards to play them on your turn.
         </footer>
       </aside>
     </div>
@@ -171,11 +170,11 @@
     {"id":"Guard","type":"Block","text":"Negate next 3 damage.","block":3,"energyCost":1},
     {"id":"Shield Bash","type":"Attack","power":2,"text":"Deal 2 damage and apply 2 block to yourself.","selfBlock":2,"energyCost":2},
     {"id":"Heal","type":"Heal","power":3,"text":"Restore 3 life.","energyCost":1},
-    {"id":"Adrenaline","type":"Utility","text":"Draw 2 cards, then discard 1.","draw":2,"discard":1,"energyCost":2},
+    {"id":"Adrenaline","type":"Utility","text":"Draw 2 cards, then discard 1.","draw":2,"discard":1,"energyCost":0},
     {"id":"Overload","type":"Attack","power":5,"text":"Deal 5 damage. Lose 2 life.","selfDamage":2,"energyCost":3},
     {"id":"Riposte","type":"Utility","text":"Next attack you receive will be returned for half damage.","riposte":true,"energyCost":1},
-    {"id":"Siphon","type":"Attack","power":2,"text":"Deal 2 damage and heal for 2.","healOnDamage":2,"energyCost":1},
-    {"id":"Insight","type":"Utility","text":"Look at top 3 cards and pick 1 to add to hand.","scry":3,"energyCost":2},
+    {"id":"Siphon","type":"Attack","power":2,"text":"Deal 2 damage and heal for 2.","healOnDamage":2,"energyCost":2},
+    {"id":"Insight","type":"Utility","text":"Look at top 3 cards and pick 1 to add to hand.","scry":3,"energyCost":1},
   ];
 
   // --- Game engine state ---
