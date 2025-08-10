@@ -3,13 +3,24 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Arcane Blitz — Online Card Duel</title>
+  <title>Arcane Blitz — Toggleable Online Play</title>
   <style>
     :root{--bg:#0f1724;--card:#0b1220;--accent:#7c3aed;--muted:#94a3b8;--panel:#081023}
     html,body{height:100%;margin:0;font-family:Inter,system-ui,Segoe UI,Roboto,Arial;background:linear-gradient(180deg,#071025,#0b1228);color:#e6eef8}
     .app{max-width:1100px;margin:22px auto;padding:18px;border-radius:12px}
-    header{display:flex;align-items:center;gap:12px}
-    h1{font-size:20px;margin:0}
+    header{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+    h1{font-size:20px;margin:0;flex:1}
+    #toggleOnlineBtn {
+      background: var(--accent);
+      border: none;
+      padding: 8px 16px;
+      border-radius: 8px;
+      color: white;
+      font-weight: 700;
+      cursor: pointer;
+      user-select: none;
+      white-space: nowrap;
+    }
     .board{display:grid;grid-template-columns:1fr 340px;gap:18px;margin-top:14px}
     .play-area{background:var(--panel);padding:12px;border-radius:10px;min-height:520px}
     .sidebar{background:rgba(10,12,18,0.6);padding:12px;border-radius:10px}
@@ -49,6 +60,7 @@
   <div class="app">
     <header>
       <h1>Arcane Blitz — Online Card Duel</h1>
+      <button id="toggleOnlineBtn">Online Play: OFF</button>
     </header>
 
     <div class="board">
@@ -152,7 +164,6 @@
   </div>
 
 <script>
-  // --- CARD DEFINITIONS (JSON) ---
   const DEFAULT_DECK = [
     {"id":"Strike","type":"Attack","power":3,"text":"Deal 3 damage.","energyCost":1},
     {"id":"Quick Strike","type":"Attack","power":2,"text":"Deal 2 damage. (Fast)","energyCost":1},
@@ -166,19 +177,22 @@
     {"id":"Insight","type":"Utility","text":"Look at top 3 cards and pick 1 to add to hand.","scry":3,"energyCost":1},
   ];
 
-  // --- Game engine state ---
   let state = {
     deck:[], discard:[],
     player:{life:20,hand:[],block:0,riposte:false, energy:3, maxEnergy:3},
     opp:{life:20,hand:[],block:0,riposte:false, energy:3, maxEnergy:3},
-    turn:'player', turnNumber:1, ai:false, timer:60
+    turn:'player', turnNumber:1, timer:60
   };
 
   let playerId = null;
   let roomId = null;
   let socket = null;
+  let onlinePlay = false;
 
-  // --- Utility functions ---
+  const toggleBtn = document.getElementById('toggleOnlineBtn');
+  const endTurnBtn = document.getElementById('endTurnBtn');
+  const newGameBtn = document.getElementById('newGame');
+
   function log(text){
     const el = document.getElementById('log');
     el.innerHTML = (new Date()).toLocaleTimeString() + ' — ' + text + '\n' + el.innerHTML;
@@ -193,7 +207,6 @@
 
   function cloneCard(card){return JSON.parse(JSON.stringify(card));}
 
-  // --- Render functions ---
   function renderAll(){
     document.getElementById('playerLife').innerText = state.player.life;
     document.getElementById('oppLife').innerText = state.opp.life;
@@ -204,14 +217,12 @@
     document.getElementById('oppEnergy').innerText = state.opp.energy;
     document.getElementById('turnIndicator').innerText = state.turn==='player'? 'Your Turn' : 'Opponent Turn';
 
-    // Enable/disable end turn button
-    const endBtn = document.getElementById('endTurnBtn');
     if(state.turn==='player'){
-      endBtn.classList.remove('disabled');
-      endBtn.onclick = () => endTurn();
+      endTurnBtn.classList.remove('disabled');
+      endTurnBtn.onclick = endTurn;
     } else {
-      endBtn.classList.add('disabled');
-      endBtn.onclick = null;
+      endTurnBtn.classList.add('disabled');
+      endTurnBtn.onclick = null;
     }
 
     // Render player hand
@@ -231,6 +242,19 @@
 
       handDiv.appendChild(cardDiv);
     });
+
+    // Update newGame button state based on onlinePlay
+    if(onlinePlay){
+      newGameBtn.classList.remove('disabled');
+      newGameBtn.onclick = () => {
+        if(socket && socket.readyState === WebSocket.OPEN){
+          socket.send(JSON.stringify({type:'join'}));
+        }
+      };
+    } else {
+      newGameBtn.classList.add('disabled');
+      newGameBtn.onclick = null;
+    }
   }
 
   function appendBattle(text){
@@ -239,7 +263,6 @@
     el.innerHTML = timestamped + '<br>' + el.innerHTML;
   }
 
-  // --- Game logic ---
   function drawCard(player){
     if(state.deck.length === 0){
       state.deck = state.discard.splice(0);
@@ -251,11 +274,8 @@
     }
   }
 
-  // Simplified example of resolving a card play, can be expanded
   function resolveCard(card, player, opponent){
     appendBattle(`${player === state.player ? 'You' : 'Opponent'} played ${card.id}`);
-
-    // Energy cost check removed for demo, assumed validated on client
 
     if(card.type === 'Attack'){
       let damage = card.power || 0;
@@ -316,14 +336,11 @@
           }
         }
       }
-      // More effects can be added here
     }
 
-    // Energy spent
     player.energy -= card.energyCost || 1;
   }
 
-  // --- Online socket connection and matchmaking ---
   function setupSocket(){
     socket = new WebSocket('ws://localhost:8080');
     socket.onopen = () => {
@@ -350,7 +367,6 @@
         const playerObj = isOpponent ? state.opp : state.player;
         const opponentObj = isOpponent ? state.player : state.opp;
 
-        // Remove card from player's hand
         if(playerObj.hand[cardIndex] && playerObj.hand[cardIndex].id === cardId){
           playerObj.hand.splice(cardIndex, 1);
           appendBattle(`${isOpponent ? 'Opponent' : 'You'} played ${cardId}`);
@@ -362,7 +378,6 @@
         state.turn = (data.turn === 'player1' && playerId === 'player1') || (data.turn === 'player2' && playerId === 'player2') ? 'player' : 'opponent';
         log(`Turn changed: ${state.turn==='player'? 'Your Turn' : 'Opponent Turn'}`);
         if(state.turn === 'player'){
-          // Refill energy, draw a card
           state.player.energy = state.player.maxEnergy;
           drawCard(state.player);
         }
@@ -380,17 +395,25 @@
 
     socket.onclose = () => {
       log('Disconnected from server.');
+      // If disconnected while onlinePlay enabled, auto toggle OFF to fallback offline
+      if(onlinePlay){
+        toggleOnline(false);
+      }
     };
   }
 
-  // --- Play card (client triggers server message) ---
+  function disconnectSocket(){
+    if(socket){
+      socket.close();
+      socket = null;
+      playerId = null;
+      roomId = null;
+    }
+  }
+
   function playCard(playerOB, targetOB, cardIndex){
     if(state.turn !== 'player'){
       log('Not your turn!');
-      return;
-    }
-    if(!socket || socket.readyState !== WebSocket.OPEN){
-      log('Not connected to server.');
       return;
     }
     const card = state.player.hand[cardIndex];
@@ -400,29 +423,68 @@
       return;
     }
 
-    socket.send(JSON.stringify({
-      type:'playCard',
-      cardId: card.id,
-      cardIndex: cardIndex
-    }));
+    if(onlinePlay){
+      if(!socket || socket.readyState !== WebSocket.OPEN){
+        log('Not connected to server.');
+        return;
+      }
+      socket.send(JSON.stringify({
+        type:'playCard',
+        cardId: card.id,
+        cardIndex: cardIndex
+      }));
+    } else {
+      // Offline play: resolve immediately
+      state.player.hand.splice(cardIndex, 1);
+      resolveCard(card, state.player, state.opp);
+      renderAll();
+    }
   }
 
-  // --- End turn ---
   function endTurn(){
     if(state.turn !== 'player'){
       log('Not your turn!');
       return;
     }
-    if(!socket || socket.readyState !== WebSocket.OPEN){
-      log('Not connected to server.');
-      return;
+
+    if(onlinePlay){
+      if(!socket || socket.readyState !== WebSocket.OPEN){
+        log('Not connected to server.');
+        return;
+      }
+      socket.send(JSON.stringify({type:'endTurn'}));
+      state.turn = 'opponent';
+      renderAll();
+    } else {
+      // Offline turn swap
+      state.turn = 'opponent';
+      opponentTurn();
     }
-    socket.send(JSON.stringify({type:'endTurn'}));
-    state.turn = 'opponent';
-    renderAll();
   }
 
-  // --- Reset local game state ---
+  function opponentTurn(){
+    // Simple AI for offline mode
+    setTimeout(() => {
+      // Opponent plays first playable card if any
+      for(let i=0; i<state.opp.hand.length; i++){
+        let c = state.opp.hand[i];
+        if(c.energyCost <= state.opp.energy){
+          state.opp.hand.splice(i,1);
+          resolveCard(c, state.opp, state.player);
+          break;
+        }
+      }
+      state.opp.energy = state.opp.maxEnergy;
+      drawCard(state.opp);
+
+      state.turn = 'player';
+      state.player.energy = state.player.maxEnergy;
+      drawCard(state.player);
+      renderAll();
+      log('Your turn.');
+    }, 1200);
+  }
+
   function resetState(){
     state.deck = [];
     state.discard = [];
@@ -432,25 +494,46 @@
     state.turnNumber = 1;
     state.timer = 60;
 
-    // Setup deck and deal hands
     for(let i=0;i<10;i++) state.deck.push(cloneCard(DEFAULT_DECK[i%DEFAULT_DECK.length]));
     shuffle(state.deck);
     for(let i=0;i<5;i++) drawCard(state.player);
     for(let i=0;i<5;i++) drawCard(state.opp);
   }
 
-  document.getElementById('endTurnBtn').onclick = endTurn;
-  document.getElementById('newGame').onclick = () => {
-    if(socket && socket.readyState === WebSocket.OPEN){
-      socket.send(JSON.stringify({type:'join'}));
+  function toggleOnline(enabled){
+    onlinePlay = enabled;
+    toggleBtn.innerText = `Online Play: ${enabled ? 'ON' : 'OFF'}`;
+    log(`Online play ${enabled ? 'enabled' : 'disabled'}.`);
+
+    if(enabled){
+      resetState();
+      setupSocket();
+      newGameBtn.classList.remove('disabled');
+      newGameBtn.onclick = () => {
+        if(socket && socket.readyState === WebSocket.OPEN){
+          socket.send(JSON.stringify({type:'join'}));
+        }
+      };
+      endTurnBtn.classList.add('disabled'); // disable end turn until connected and game started
+      endTurnBtn.onclick = null;
+    } else {
+      disconnectSocket();
+      resetState();
+      newGameBtn.classList.add('disabled');
+      newGameBtn.onclick = null;
+      endTurnBtn.classList.remove('disabled');
+      endTurnBtn.onclick = endTurn;
+      renderAll();
     }
+  }
+
+  toggleBtn.onclick = () => {
+    toggleOnline(!onlinePlay);
   };
 
-  // Start socket connection on page load
-  setupSocket();
+  // Init offline mode by default
   resetState();
   renderAll();
-
 </script>
 </body>
 </html>
