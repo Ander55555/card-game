@@ -6,9 +6,10 @@ console.log('Server running on ws://localhost:8080');
 let rooms = {}; // roomId => { players: [ws, ws], state: {game state}, turn: 'player1' or 'player2' }
 
 function createNewGameState() {
-  // Copy your initial game state here:
+  // Simplified initial state for demo
   return {
-    deck: [], discard: [],
+    deck: [],
+    discard: [],
     players: {
       player1: { life: 20, hand: [], block: 0, riposte: false, energy: 3, maxEnergy: 3 },
       player2: { life: 20, hand: [], block: 0, riposte: false, energy: 3, maxEnergy: 3 }
@@ -16,11 +17,9 @@ function createNewGameState() {
     turn: 'player1',
     turnNumber: 1,
     timer: 60,
-    // For demo, decks can be simplified or duplicated
   };
 }
 
-// Generate random room id
 function randomRoomId() {
   return Math.random().toString(36).substring(2, 8);
 }
@@ -38,15 +37,8 @@ wss.on('connection', (ws) => {
       return;
     }
 
-    // Message types:
-    // 'join' -> { roomId? }
-    // 'playCard' -> { cardId, cardIndex }
-    // 'endTurn'
-    
     if(data.type === 'join') {
-      // Assign player to a room
       if(data.roomId && rooms[data.roomId]) {
-        // Join existing room if less than 2 players
         if(rooms[data.roomId].players.length < 2) {
           ws.roomId = data.roomId;
           ws.playerId = 'player2';
@@ -59,7 +51,6 @@ wss.on('connection', (ws) => {
           ws.send(JSON.stringify({ type: 'error', message: 'Room full' }));
         }
       } else {
-        // Create new room
         const newRoomId = randomRoomId();
         ws.roomId = newRoomId;
         ws.playerId = 'player1';
@@ -78,17 +69,16 @@ wss.on('connection', (ws) => {
         ws.send(JSON.stringify({ type: 'error', message: 'Not your turn' }));
         return;
       }
-      // For simplicity, broadcast the playCard action to other player
-      // You can add validation & resolve logic here on server
 
+      // Broadcast playCard to both players
       broadcastRoom(ws.roomId, {
         type: 'playCard',
         playerId: ws.playerId,
         cardId: data.cardId,
         cardIndex: data.cardIndex
       });
-      
-      // Example: switch turn after card play (simplified)
+
+      // Switch turn (simple demo)
       room.state.turn = room.state.turn === 'player1' ? 'player2' : 'player1';
       broadcastRoom(ws.roomId, { type: 'turnChange', turn: room.state.turn });
     } else if(data.type === 'endTurn') {
@@ -104,7 +94,6 @@ wss.on('connection', (ws) => {
   });
 
   ws.on('close', () => {
-    // Remove player from room on disconnect
     if(ws.roomId && rooms[ws.roomId]) {
       rooms[ws.roomId].players = rooms[ws.roomId].players.filter(p => p !== ws);
       if(rooms[ws.roomId].players.length === 0) {
@@ -122,7 +111,6 @@ function broadcastRoom(roomId, message) {
   });
 }
 
-// Ping clients to keep connection alive
 setInterval(() => {
   wss.clients.forEach(ws => {
     if(!ws.isAlive) return ws.terminate();
