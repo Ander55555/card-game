@@ -1,120 +1,132 @@
 const WebSocket = require('ws');
 
 const wss = new WebSocket.Server({ port: 8080 });
-console.log('Server running on ws://localhost:8080');
 
-let rooms = {}; // roomId => { players: [ws, ws], state: {game state}, turn: 'player1' or 'player2' }
+let waitingPlayer = null;  // Player waiting for a match
+let rooms = new Map();     // Map roomId => { players: [ws1, ws2], ids: [id1, id2] }
 
-function createNewGameState() {
-  // Simplified initial state for demo
-  return {
-    deck: [],
-    discard: [],
-    players: {
-      player1: { life: 20, hand: [], block: 0, riposte: false, energy: 3, maxEnergy: 3 },
-      player2: { life: 20, hand: [], block: 0, riposte: false, energy: 3, maxEnergy: 3 }
-    },
-    turn: 'player1',
-    turnNumber: 1,
-    timer: 60,
-  };
-}
-
-function randomRoomId() {
-  return Math.random().toString(36).substring(2, 8);
+function send(ws, data) {
+  ws.send(JSON.stringify(data));
 }
 
 wss.on('connection', (ws) => {
-  ws.isAlive = true;
-  ws.on('pong', () => ws.isAlive = true);
+  console.log('New connection');
 
-  ws.on('message', (message) => {
+  ws.isAlive = true;
+  ws.on('pong', () => { ws.isAlive = true; });
+
+  ws.on('message', (msg) => {
     let data;
     try {
-      data = JSON.parse(message);
+      data = JSON.parse(msg);
     } catch {
-      ws.send(JSON.stringify({ type: 'error', message: 'Invalid JSON' }));
+      send(ws, { type: 'error', message: 'Invalid JSON' });
       return;
     }
 
-    if(data.type === 'join') {
-      if(data.roomId && rooms[data.roomId]) {
-        if(rooms[data.roomId].players.length < 2) {
-          ws.roomId = data.roomId;
-          ws.playerId = 'player2';
-          rooms[data.roomId].players.push(ws);
-
-          ws.send(JSON.stringify({ type: 'joined', playerId: ws.playerId, roomId: ws.roomId }));
-          broadcastRoom(ws.roomId, { type: 'startGame', message: 'Game started!', state: rooms[ws.roomId].state });
-          console.log(`Player2 joined room ${ws.roomId}`);
-        } else {
-          ws.send(JSON.stringify({ type: 'error', message: 'Room full' }));
-        }
-      } else {
-        const newRoomId = randomRoomId();
-        ws.roomId = newRoomId;
+    if(data.type === 'join'){
+      if(waitingPlayer === null){
+        waitingPlayer = ws;
         ws.playerId = 'player1';
-        rooms[newRoomId] = {
-          players: [ws],
-          state: createNewGameState()
-        };
+        send(ws, { type: 'joined', playerId: 'player1', roomId: 'waiting' });
+        console.log('Player1 waiting for opponent...');
+      } else {
+        // Create room
+        const roomId = 'room_' + Math.floor(Math.random() * 1000000);
+        const player1 = waitingPlayer;
+        const player2 = ws;
 
-        ws.send(JSON.stringify({ type: 'joined', playerId: ws.playerId, roomId: newRoomId }));
-        console.log(`Player1 created room ${newRoomId}`);
+        player1.playerId = 'player1';
+        player2.playerId = 'player2';
+
+        rooms.set(roomId, {
+          players: [player1, player2],
+          ids: ['player1', 'player2'],
+          turn: 'player1'
+        });
+
+        player1.roomId = roomId;
+        player2.roomId = roomId;
+
+        send(player1, { type: 'joined', playerId: 'player1', roomId });
+        send(player2, { type: 'joined', playerId: 'player2', roomId });
+
+        // Start game
+        rooms.get(roomId).players.forEach((p) => {
+          send(p, { type: 'startGame', message: 'Game started! You are ' + p.playerId });
+        });
+
+        // Notify player1's turn
+        send(player1, { type: 'turnChange', turn: 'player1' });
+        send(player2, { type: 'turnChange', turn: 'player1' });
+
+        waitingPlayer = null;
+        console.log(`Room ${roomId} started.`);
       }
-    } else if(data.type === 'playCard') {
-      const room = rooms[ws.roomId];
-      if(!room) return;
-      if(room.state.turn !== ws.playerId) {
-        ws.send(JSON.stringify({ type: 'error', message: 'Not your turn' }));
+    }
+    else if(data.type === 'playCard'){
+      const roomId = ws.roomId;
+      if(!roomId || !rooms.has(roomId)){
+        send(ws, {type:'error', message:'Not in a room'});
         return;
       }
+      const room = rooms.get(roomId);
+      const opponent = room.players.find(p => p !== ws);
 
-      // Broadcast playCard to both players
-      broadcastRoom(ws.roomId, {
+      // Broadcast to opponent
+      send(opponent, {
         type: 'playCard',
         playerId: ws.playerId,
         cardId: data.cardId,
         cardIndex: data.cardIndex
       });
-
-      // Switch turn (simple demo)
-      room.state.turn = room.state.turn === 'player1' ? 'player2' : 'player1';
-      broadcastRoom(ws.roomId, { type: 'turnChange', turn: room.state.turn });
-    } else if(data.type === 'endTurn') {
-      const room = rooms[ws.roomId];
-      if(!room) return;
-      if(room.state.turn !== ws.playerId) {
-        ws.send(JSON.stringify({ type: 'error', message: 'Not your turn' }));
+    }
+    else if(data.type === 'endTurn'){
+      const roomId = ws.roomId;
+      if(!roomId || !rooms.has(roomId)){
+        send(ws, {type:'error', message:'Not in a room'});
         return;
       }
-      room.state.turn = room.state.turn === 'player1' ? 'player2' : 'player1';
-      broadcastRoom(ws.roomId, { type: 'turnChange', turn: room.state.turn });
+      const room = rooms.get(roomId);
+
+      // Switch turn
+      room.turn = (room.turn === 'player1') ? 'player2' : 'player1';
+
+      // Notify both players whose turn it is
+      room.players.forEach(p => {
+        send(p, { type: 'turnChange', turn: room.turn });
+      });
     }
   });
 
   ws.on('close', () => {
-    if(ws.roomId && rooms[ws.roomId]) {
-      rooms[ws.roomId].players = rooms[ws.roomId].players.filter(p => p !== ws);
-      if(rooms[ws.roomId].players.length === 0) {
-        delete rooms[ws.roomId];
-        console.log(`Room ${ws.roomId} deleted due to no players`);
+    console.log('Connection closed');
+    // Remove player from waiting or rooms
+    if(waitingPlayer === ws) waitingPlayer = null;
+
+    for(let [roomId, room] of rooms){
+      if(room.players.includes(ws)){
+        // Notify other player about disconnect
+        const other = room.players.find(p => p !== ws);
+        if(other && other.readyState === WebSocket.OPEN){
+          send(other, {type:'error', message:'Opponent disconnected.'});
+          other.close();
+        }
+        rooms.delete(roomId);
+        console.log(`Room ${roomId} closed due to disconnect.`);
+        break;
       }
     }
   });
 });
 
-function broadcastRoom(roomId, message) {
-  if(!rooms[roomId]) return;
-  rooms[roomId].players.forEach(player => {
-    player.send(JSON.stringify(message));
-  });
-}
-
+// Ping to keep connections alive
 setInterval(() => {
   wss.clients.forEach(ws => {
     if(!ws.isAlive) return ws.terminate();
     ws.isAlive = false;
-    ws.ping();
+    ws.ping(null, false, true);
   });
 }, 30000);
+
+console.log('WebSocket server running on ws://localhost:8080');
