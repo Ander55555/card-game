@@ -15,11 +15,12 @@
     .sidebar{background:rgba(10,12,18,0.6);padding:12px;border-radius:10px}
     .zone{border-radius:8px;padding:8px;margin-bottom:10px;background:linear-gradient(180deg,rgba(255,255,255,0.02),transparent)}
     .row{display:flex;gap:8px;align-items:center}
-    .info{display:flex;justify-content:space-between;align-items:center}
+    .info{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
     .player{padding:10px;border-radius:8px}
     .life{font-weight:700;font-size:18px}
     .hand{display:flex;gap:8px;flex-wrap:wrap}
-    .card{width:92px;height:128px;border-radius:8px;background:linear-gradient(180deg,#0b2136,#06202b);box-shadow:0 6px 18px rgba(4,6,12,0.6);padding:8px;display:flex;flex-direction:column;justify-content:space-between;cursor:pointer}
+    .card{width:92px;height:128px;border-radius:8px;background:linear-gradient(180deg,#0b2136,#06202b);box-shadow:0 6px 18px rgba(4,6,12,0.6);padding:8px;display:flex;flex-direction:column;justify-content:space-between;cursor:pointer;user-select:none}
+    .card.disabled{opacity:0.4;pointer-events:none;cursor:default;}
     .card .title{font-size:12px;font-weight:700}
     .card .flavor{font-size:11px;color:var(--muted)}
     .mini{font-size:12px;color:var(--muted)}
@@ -38,6 +39,10 @@
     .health-bar{height:10px;background:rgba(255,255,255,0.05);border-radius:8px;overflow:hidden}
     .health-fill{height:100%;background:linear-gradient(90deg,#10b981,#047857);width:100%}
     .small{font-size:13px}
+    #opponentZone.active {
+      border: 2px solid var(--accent);
+      padding: 8px;
+    }
   </style>
 </head>
 <body>
@@ -58,6 +63,10 @@
             <div>
               <div class="mini">Deck</div>
               <div id="oppDeckCount" class="mini">--</div>
+            </div>
+            <div>
+              <div class="mini">Energy</div>
+              <div id="oppEnergy" class="mini">3</div>
             </div>
           </div>
         </div>
@@ -104,6 +113,10 @@
             <div>
               <div class="mini">Hand</div>
               <div id="handCount" class="mini">--</div>
+            </div>
+            <div>
+              <div class="mini">Energy</div>
+              <div id="playerEnergy" class="mini">3</div>
             </div>
           </div>
 
@@ -153,22 +166,23 @@
   <script>
   // --- CARD DEFINITIONS (JSON) ---
   const DEFAULT_DECK = [
-    {"id":"Strike","type":"Attack","power":3,"text":"Deal 3 damage."},
-    {"id":"Quick Strike","type":"Attack","power":2,"text":"Deal 2 damage. (Fast)"},
-    {"id":"Guard","type":"Block","text":"Negate next 3 damage." ,"block":3},
-    {"id":"Shield Bash","type":"Attack","power":2,"text":"Deal 2 damage and apply 2 block to yourself.","selfBlock":2},
-    {"id":"Heal","type":"Heal","power":3,"text":"Restore 3 life."},
-    {"id":"Adrenaline","type":"Utility","text":"Draw 2 cards, then discard 1.","draw":2,"discard":1},
-    {"id":"Overload","type":"Attack","power":5,"text":"Deal 5 damage. Lose 2 life.","selfDamage":2},
-    {"id":"Riposte","type":"Utility","text":"Next attack you receive will be returned for half damage.","riposte":true},
-    {"id":"Siphon","type":"Attack","power":2,"text":"Deal 2 damage and heal for 2." ,"healOnDamage":2},
-    {"id":"Insight","type":"Utility","text":"Look at top 3 cards and pick 1 to add to hand.","scry":3},
+    {"id":"Strike","type":"Attack","power":3,"text":"Deal 3 damage.","energyCost":1},
+    {"id":"Quick Strike","type":"Attack","power":2,"text":"Deal 2 damage. (Fast)","energyCost":1},
+    {"id":"Guard","type":"Block","text":"Negate next 3 damage.","block":3,"energyCost":1},
+    {"id":"Shield Bash","type":"Attack","power":2,"text":"Deal 2 damage and apply 2 block to yourself.","selfBlock":2,"energyCost":2},
+    {"id":"Heal","type":"Heal","power":3,"text":"Restore 3 life.","energyCost":1},
+    {"id":"Adrenaline","type":"Utility","text":"Draw 2 cards, then discard 1.","draw":2,"discard":1,"energyCost":2},
+    {"id":"Overload","type":"Attack","power":5,"text":"Deal 5 damage. Lose 2 life.","selfDamage":2,"energyCost":3},
+    {"id":"Riposte","type":"Utility","text":"Next attack you receive will be returned for half damage.","riposte":true,"energyCost":1},
+    {"id":"Siphon","type":"Attack","power":2,"text":"Deal 2 damage and heal for 2.","healOnDamage":2,"energyCost":1},
+    {"id":"Insight","type":"Utility","text":"Look at top 3 cards and pick 1 to add to hand.","scry":3,"energyCost":2},
   ];
 
   // --- Game engine state ---
   let state = {
-    deck:[], discard:[], player:{life:20,hand:[],block:0,riposte:false},
-    opp:{life:20,hand:[],block:0,riposte:false},
+    deck:[], discard:[],
+    player:{life:20,hand:[],block:0,riposte:false, energy:3, maxEnergy:3},
+    opp:{life:20,hand:[],block:0,riposte:false, energy:3, maxEnergy:3},
     turn:'player', turnNumber:1, ai:true, timer:60
   }
 
@@ -209,11 +223,12 @@
     state.deck = [].concat(...Array(6).fill(state.deck)).map((c,i)=>({...cloneCard(c),_uid:i+'-'+c.id}));
     shuffle(state.deck);
     state.discard=[];
-    state.player = {life:20,hand:[],block:0,riposte:false};
-    state.opp = {life:20,hand:[],block:0,riposte:false};
+    state.player = {life:20,hand:[],block:0,riposte:false, energy:3, maxEnergy:3};
+    state.opp = {life:20,hand:[],block:0,riposte:false, energy:3, maxEnergy:3};
     state.turn='player'; state.turnNumber=1; state.timer=60;
     // initial hands
     for(let i=0;i<4;i++){ draw(state.player); draw(state.opp); }
+    enableOpponentHand(false);
     renderAll();
     log('New game started.');
   }
@@ -221,7 +236,9 @@
   function draw(who){
     if(state.deck.length===0){
       if(state.discard.length===0) return null;
-      state.deck = state.discard.splice(0); shuffle(state.deck); log('Shuffled discard into deck.');
+      state.deck = state.discard.splice(0);
+      shuffle(state.deck);
+      log('Shuffled discard into deck.');
     }
     const card = state.deck.pop();
     who.hand.push(card);
@@ -229,7 +246,14 @@
   }
 
   function playCard(playerOB, targetOB, cardIndex){
-    const card = playerOB.hand.splice(cardIndex,1)[0];
+    const card = playerOB.hand[cardIndex];
+    const cost = card.energyCost || 1;
+    if(playerOB.energy < cost){
+      log((playerOB === state.player ? 'You' : 'Opponent') + ' do not have enough energy to play ' + card.id + '.');
+      return;
+    }
+    playerOB.energy -= cost;
+    playerOB.hand.splice(cardIndex,1);
     state.discard.push(card);
     resolveCard(card, playerOB, targetOB);
     renderAll();
@@ -269,24 +293,33 @@
     if(card.selfDamage){ me.life -= card.selfDamage; }
 
     // Heal
-    if(card.type==='Heal' || card.power && card.type==='Heal'){
+    if(card.type==='Heal' || (card.power && card.type==='Heal')){
       if(card.power) me.life += card.power;
     }
 
     // Draw / discard
     if(card.draw){ for(let i=0;i<card.draw;i++) draw(me); }
-    if(card.discard){ // simple: discard random from hand
-      for(let i=0;i<card.discard;i++){ if(me.hand.length>0){ const idx=Math.floor(Math.random()*me.hand.length); const c = me.hand.splice(idx,1)[0]; state.discard.push(c); appendBattle((me===state.player? 'You':'Opponent')+' discarded '+c.id+'.'); } }
+    if(card.discard){
+      for(let i=0;i<card.discard;i++){
+        if(me.hand.length>0){
+          const idx=Math.floor(Math.random()*me.hand.length);
+          const c = me.hand.splice(idx,1)[0];
+          state.discard.push(c);
+          appendBattle((me===state.player? 'You':'Opponent')+' discarded '+c.id+'.');
+        }
+      }
     }
 
     // Scry / Insight
-    if(card.scry){ // look at top N, pick highest-power to add
+    if(card.scry){
       const top = [];
       for(let i=0;i<Math.min(card.scry,state.deck.length);i++) top.push(state.deck[state.deck.length-1-i]);
-      // simple pick first
-      if(top.length>0){ const picked = top[0]; // remove it from deck
-        const idx = state.deck.lastIndexOf(picked); if(idx>=0) state.deck.splice(idx,1);
-        me.hand.push(picked); appendBattle((me===state.player? 'You':'Opponent')+' looked at top '+card.scry+' and took '+picked.id+'.');
+      if(top.length>0){
+        const picked = top[0];
+        const idx = state.deck.lastIndexOf(picked);
+        if(idx>=0) state.deck.splice(idx,1);
+        me.hand.push(picked);
+        appendBattle((me===state.player? 'You':'Opponent')+' looked at top '+card.scry+' and took '+picked.id+'.');
       }
     }
 
@@ -300,7 +333,15 @@
 
   function appendBattle(text){
     const el = document.getElementById('battleLog');
-    el.innerHTML = (new Date()).toLocaleTimeString() + ' — ' + text + '<br>' + el.innerHTML;
+    const timestamped = (new Date()).toLocaleTimeString() + ' — ' + text;
+
+    battleHistory.unshift(timestamped);
+
+    if(battleHistory.length > 5){
+      battleHistory.pop();
+    }
+
+    el.innerHTML = battleHistory.join('<br>');
   }
 
   function checkWin(){
@@ -311,85 +352,178 @@
     }
   }
 
-  function disablePlay(){ document.getElementById('hand').classList.add('disabled'); document.getElementById('endTurnBtn').classList.add('disabled'); }
+  function disablePlay(){
+    document.getElementById('hand').classList.add('disabled');
+    document.getElementById('endTurnBtn').classList.add('disabled');
+    enableOpponentHand(false);
+  }
 
-  // --- Render ---
+  // --- Render functions ---
   function renderAll(){
-    document.getElementById('deckCount').innerText = state.deck.length;
-    document.getElementById('discardCount').innerText = state.discard.length;
-    document.getElementById('oppDeckCount').innerText = state.deck.length; // shared for demo
-    document.getElementById('handCount').innerText = state.player.hand.length;
     document.getElementById('playerLife').innerText = state.player.life;
     document.getElementById('oppLife').innerText = state.opp.life;
-    document.getElementById('turnIndicator').innerText = (state.turn==='player'?'Your Turn':'Opponent');
+    document.getElementById('deckCount').innerText = state.deck.length;
+    document.getElementById('discardCount').innerText = state.discard.length;
+    document.getElementById('oppDeckCount').innerText = state.deck.length;
+    document.getElementById('playerEnergy').innerText = state.player.energy;
+    document.getElementById('oppEnergy').innerText = state.opp.energy;
 
-    // hand
-    const handEl = document.getElementById('hand'); handEl.innerHTML='';
-    state.player.hand.forEach((c,i)=>{
-      const div = document.createElement('div'); div.className='card';
-      div.innerHTML = `<div><div class=title>${c.id}</div><div class=card-type>${c.type}</div></div><div class=flavor>${c.text||''}</div><div class=mini>Play</div>`;
-      div.onclick = ()=>{ if(state.turn!=='player') return; playCard(state.player, state.opp, i); };
-      handEl.appendChild(div);
+    // Turn indicator
+    document.getElementById('turnIndicator').innerText = state.turn==='player'? 'Your Turn' : 'Opponent Turn';
+
+    // Render player hand
+    const handDiv = document.getElementById('hand');
+    handDiv.innerHTML = '';
+    state.player.hand.forEach((c,i) => {
+      const cardDiv = document.createElement('div');
+      cardDiv.className = 'card';
+      const cost = c.energyCost || 1;
+      if(state.turn !== 'player' || state.player.energy < cost) cardDiv.classList.add('disabled');
+
+      cardDiv.innerHTML = `<div><div class=title>${c.id} (${cost}⚡)</div><div class=card-type>${c.type}</div></div><div class=flavor>${c.text||''}</div>`;
+
+      if(state.turn === 'player' && state.player.energy >= cost){
+        cardDiv.onclick = () => playCard(state.player, state.opp, i);
+      }
+
+      handDiv.appendChild(cardDiv);
     });
 
-    // simple opponent hand size show
+    // Opponent hand - only render clickable if hotseat and opponent's turn
+    if(!state.ai && state.turn==='opponent'){
+      enableOpponentHand(true);
+    } else {
+      enableOpponentHand(false);
+    }
+  }
+
+  // Enable or disable opponent hand for hotseat play
+  function enableOpponentHand(enabled){
     const oppZone = document.getElementById('opponentZone');
-    // battlefield updated already
+    oppZone.classList.toggle('active', enabled);
+
+    if(enabled){
+      renderOpponentHand();
+    } else {
+      clearOpponentHandUI();
+    }
   }
 
-  // --- Turn management & AI ---
-  document.getElementById('endTurnBtn').addEventListener('click', ()=>{ if(state.turn==='player'){ endTurn(); } });
-  document.getElementById('aiToggle').addEventListener('click', ()=>{ state.ai=!state.ai; document.getElementById('aiToggle').innerText = state.ai? 'Opponent: AI ON':'Opponent: AI OFF'; log('AI toggled: '+(state.ai?'ON':'OFF')); });
-  document.getElementById('newGame').addEventListener('click', newGame);
-  document.getElementById('resetBtn').addEventListener('click', ()=>{ location.reload(); });
-  document.getElementById('copyJson').addEventListener('click', ()=>{ navigator.clipboard.writeText(document.getElementById('deckJson').value); log('Deck JSON copied to clipboard.'); });
+  // Render opponent hand cards for hotseat mode
+  function renderOpponentHand(){
+    let oppZone = document.getElementById('opponentZone');
+    let existing = document.getElementById('oppHand');
+    if(existing) existing.remove();
 
+    const handDiv = document.createElement('div');
+    handDiv.id = 'oppHand';
+    handDiv.className = 'hand';
+    handDiv.style.marginTop = '8px';
+    handDiv.style.flexWrap = 'wrap';
+    handDiv.style.gap = '8px';
+
+    state.opp.hand.forEach((c,i) => {
+      const cost = c.energyCost || 1;
+      const div = document.createElement('div');
+      div.className = 'card';
+      div.innerHTML = `<div><div class=title>${c.id} (${cost}⚡)</div><div class=card-type>${c.type}</div></div><div class=flavor>${c.text||''}</div><div class=mini>Play</div>`;
+
+      if(state.opp.energy < cost){
+        div.classList.add('disabled');
+        div.title = `Not enough energy (${cost})`;
+      } else {
+        div.onclick = () => {
+          if(state.turn !== 'opponent') return;
+          playCard(state.opp, state.player, i);
+        };
+      }
+      handDiv.appendChild(div);
+    });
+    oppZone.appendChild(handDiv);
+  }
+
+  // Clear opponent hand UI
+  function clearOpponentHandUI(){
+    const oppHand = document.getElementById('oppHand');
+    if(oppHand) oppHand.remove();
+  }
+
+  // --- Turn management ---
   function endTurn(){
-    // end player, let opponent draw and act
-    draw(state.opp);
-    state.turn='opponent'; state.turnNumber++;
-    renderAll();
-    log('You ended your turn. Opponent drawing.');
-    setTimeout(()=>{ if(state.ai){ aiPlay(); } else { /* hotseat: wait for opponent */ } }, 600);
+    if(state.turn==='player'){
+      state.turn = 'opponent';
+      state.turnNumber++;
+      state.opp.energy = state.opp.maxEnergy;
+      draw(state.opp);
+      renderAll();
+      log('You ended your turn. Opponent draws a card.');
+
+      if(state.ai){
+        enableOpponentHand(false);
+        setTimeout(() => aiPlay(), 600);
+      } else {
+        log('Opponent\'s turn. Play cards.');
+        enableOpponentHand(true);
+      }
+    } else if(state.turn==='opponent'){
+      state.turn = 'player';
+      state.turnNumber++;
+      state.player.energy = state.player.maxEnergy;
+      draw(state.player);
+      renderAll();
+      log('Opponent ended turn. Your turn.');
+      enableOpponentHand(false);
+    }
   }
 
+  // --- AI ---
   function aiPlay(){
-    // very basic AI: play first playable card then draw then end
-    const hand = state.opp.hand;
-    if(hand.length===0) { draw(state.opp); state.turn='player'; renderAll(); log('Opponent passed.'); return; }
-    // choose best attack if player low
-    let idx=-1;
-    for(let i=0;i<hand.length;i++){ if(hand[i].type==='Attack') { idx=i; break; } }
-    if(idx<0) idx = Math.floor(Math.random()*hand.length);
-    playCard(state.opp, state.player, idx);
-    // AI may play 0-1 additional cards
-    if(Math.random()<0.4 && state.opp.hand.length>0){ setTimeout(()=>{ aiPlay(); }, 500); }
-    else { setTimeout(()=>{ state.turn='player'; draw(state.player); renderAll(); log('Your turn.'); }, 700); }
+    if(state.turn !== 'opponent') return;
+    // AI plays all playable cards it can afford
+    let playedCard = false;
+    for(let i=state.opp.hand.length-1;i>=0;i--){
+      const card = state.opp.hand[i];
+      const cost = card.energyCost || 1;
+      if(state.opp.energy >= cost){
+        playCard(state.opp, state.player, i);
+        playedCard = true;
+        break;
+      }
+    }
+    if(!playedCard){
+      log('Opponent AI ends turn.');
+      endTurn();
+    } else {
+      // AI plays cards one at a time with delay
+      setTimeout(aiPlay, 800);
+    }
   }
 
-  // --- Init UI & load deck JSON ---
+  // --- Setup handlers ---
+  document.getElementById('endTurnBtn').onclick = () => endTurn();
+  document.getElementById('newGame').onclick = () => newGame();
+  document.getElementById('resetBtn').onclick = () => {
+    exportDeckToTextarea(DEFAULT_DECK);
+    newGame();
+  };
+  document.getElementById('aiToggle').onclick = () => {
+    state.ai = !state.ai;
+    document.getElementById('aiToggle').innerText = state.ai ? 'Toggle Opponent AI (On)' : 'Toggle Opponent AI (Off)';
+    log('AI toggled ' + (state.ai ? 'On' : 'Off') + '.');
+    enableOpponentHand(false);
+    renderAll();
+  };
+  document.getElementById('copyJson').onclick = () => {
+    navigator.clipboard.writeText(document.getElementById('deckJson').value).then(() => {
+      log('Deck JSON copied to clipboard.');
+    });
+  };
+
+  // --- Init ---
+  let battleHistory = [];
   exportDeckToTextarea(DEFAULT_DECK);
-  document.getElementById('aiToggle').innerText = state.ai? 'Opponent: AI ON' : 'Opponent: AI OFF';
   newGame();
 
-  // Keep history of last 5 battle log entries
-const battleHistory = [];
-
-function appendBattle(text){
-  const el = document.getElementById('battleLog');
-  const timestamped = (new Date()).toLocaleTimeString() + ' — ' + text;
-
-  // Add new entry to front
-  battleHistory.unshift(timestamped);
-
-  // Keep only 5 most recent entries
-  if(battleHistory.length > 5){
-    battleHistory.pop();
-  }
-
-  // Update HTML to show only last 5 entries
-  el.innerHTML = battleHistory.join('<br>');
-}
   </script>
 </body>
 </html>
